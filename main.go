@@ -13,8 +13,8 @@ func main() {
 	var path string
 	var printFiles bool
 
-	flag.StringVar(&path, "path", ".", "//путь к директории, которую надо вывести")
-	flag.BoolVar(&printFiles, "f", false, "//вывести не только директории, но и файлы")
+	flag.StringVar(&path, "path", ".", "путь к директории, которую надо вывести")
+	flag.BoolVar(&printFiles, "f", false, "вывести не только директории, но и файлы")
 	flag.Parse()
 
 	out := os.Stdout
@@ -24,8 +24,6 @@ func main() {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
-}
-
 }
 
 func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
@@ -52,7 +50,6 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 	for i, dir := range dirs {
 		isLast := i == len(dirs)-1 && len(files) == 0
 
-		// подразделы
 		fmt.Fprintf(out, "%s", prefix)
 		if isLast {
 			fmt.Fprint(out, "└───")
@@ -73,20 +70,50 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 		prefix = prefix[:len(prefix)-1]
 	}
 
-	if printFiles {
-		for i, file := range files {
-			isLast := i == len(files)-1
+	for i, file := range files {
+		isLast := i == len(files)-1
 
-			fmt.Fprintf(out, "%s", prefix)
-			if isLast {
-				fmt.Fprint(out, "└───")
-			} else {
-				fmt.Fprint(out, "├───")
-			}
-
-			fmt.Fprintln(out, file.Name())
+		fmt.Fprintf(out, "%s", prefix)
+		if isLast {
+			fmt.Fprint(out, "└─── ")
+			prefix += "\t"
+		} else {
+			fmt.Fprint(out, "├─── ")
+			prefix += "│\t"
 		}
+
+		fileSize := getFileSize(filepath.Join(path, file.Name()))
+		fmt.Fprintf(out, "%s (%s)\n", file.Name(), formatSize(fileSize))
+		prefix = prefix[:len(prefix)-1]
 	}
 
 	return nil
+}
+
+func getFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func formatSize(size int64) string {
+	const (
+		_        = iota
+		kilobyte = 1 << (10 * iota)
+		megabyte
+		gigabyte
+	)
+
+	switch {
+	case size < kilobyte:
+		return fmt.Sprintf("%d B", size)
+	case size < megabyte:
+		return fmt.Sprintf("%.2f KB", float64(size)/float64(kilobyte))
+	case size < gigabyte:
+		return fmt.Sprintf("%.2f MB", float64(size)/float64(megabyte))
+	default:
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(gigabyte))
+	}
 }
