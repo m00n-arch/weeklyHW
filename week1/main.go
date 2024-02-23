@@ -32,6 +32,13 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 		return err
 	}
 
+	// Отладочный вывод для проверки размера файла в каталоге
+	if len(entries) > 0 && !entries[0].IsDir() {
+		//	filePath := filepath.Join(path, entries[0].Name())
+		// fileSize := getFileSize(filePath)
+		//	fmt.Println("Размер файла:", fileSize)
+	}
+
 	var dirs []os.DirEntry
 	var files []os.DirEntry
 
@@ -56,7 +63,7 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 			prefix += "\t"
 		} else {
 			fmt.Fprint(out, "├───")
-			prefix += "│\t"
+			prefix += "|\t"
 		}
 
 		fmt.Fprintln(out, dir.Name())
@@ -67,7 +74,11 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 			return err
 		}
 
-		prefix = prefix[:len(prefix)-1]
+		if len(files) == 0 && i == len(dirs)-1 {
+			prefix = prefix[:len(prefix)-1]
+		} else {
+			prefix = prefix[:len(prefix)-2]
+		}
 	}
 
 	for i, file := range files {
@@ -76,17 +87,16 @@ func DirTree(out *os.File, path string, printFiles bool, prefix string) error {
 		fmt.Fprintf(out, "%s", prefix)
 		if isLast {
 			fmt.Fprint(out, "└─── ")
-			prefix += "\t"
 		} else {
 			fmt.Fprint(out, "├─── ")
-			prefix += "│\t"
 		}
 
-		fileSize := getFileSize(filepath.Join(path, file.Name()))
+		filePath := filepath.Join(path, file.Name())
+		fileSize := getFileSize(filePath)
+		fmt.Println("FilePath:", filePath) // Отладочный вывод
+		fmt.Println("FileSize:", fileSize) // Отладочный вывод
 		fmt.Fprintf(out, "%s (%s)\n", file.Name(), formatSize(fileSize))
-		prefix = prefix[:len(prefix)-1]
 	}
-
 	return nil
 }
 

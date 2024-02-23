@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"sync"
-	"time"
 )
 
 func DataSignerMd5(data string) string {
@@ -21,12 +20,8 @@ func DataSignerCrc32(data string) string {
 	return fmt.Sprintf("%v", h.Sum32())
 }
 
-// SingleHash принимает данные, вычисляет crc32(data) и crc32(md5(data)) параллельно
-// объединяет результат через "~" и отправляет на выходной канал
 func SingleHash(in, out chan interface{}) {
-	wg := &sync.WaitGroup{}
-	mu := &sync.Mutex{}
-
+	var wg sync.WaitGroup
 	for input := range in {
 		data := strconv.Itoa(input.(int))
 
@@ -39,80 +34,63 @@ func SingleHash(in, out chan interface{}) {
 
 		go func() {
 			defer wg.Done()
-			mu.Lock()
 			hash2 := DataSignerCrc32(DataSignerMd5(data))
-			mu.Unlock()
 			out <- hash2
 		}()
 	}
-
 	wg.Wait()
 	close(out)
 }
 
-// MultiHash принимает данные, вычисляет crc32(th+data) для каждого sums от 0 до 5 параллельно
-// объединяет с помощью символа "_" и отправляет на выходной канал
 func MultiHash(in, out chan interface{}) {
-	wg := &sync.WaitGroup{}
-
+	var wg sync.WaitGroup
 	for input := range in {
 		data := input.(string)
 		result := make([]string, 6)
-
-		for sums := 0; sums < 6; sums++ {
+		for th := 0; th < 6; th++ {
 			wg.Add(1)
 			go func(th int) {
 				defer wg.Done()
 				hash := DataSignerCrc32(strconv.Itoa(th) + data)
 				result[th] = hash
-			}(sums)
+			}(th)
 		}
-
-		wg.Wait() // оконательно убрать костыли пока не получается
+		wg.Wait()
 		out <- fmt.Sprintf("%s_%s_%s_%s_%s_%s", result[0], result[1], result[2], result[3], result[4], result[5])
 	}
-
 	close(out)
 }
 
-// CombineResults принимает результаты MultiHash, сортирует и объединяет их через символ "_", отправляет на выходной канал
 func CombineResults(in, out chan interface{}) {
 	var results []string
-
 	for input := range in {
 		results = append(results, input.(string))
 	}
-
 	sort.Strings(results)
-	out <- fmt.Sprintf("%s", results[0])
-
+	for _, result := range results {
+		out <- result
+	}
 	close(out)
 }
 
-// ExecutePipeline запускает конвейер обработки данных
-func ExecutePipeline(jobs ...job) {
-	var in, out chan interface{}
+func ExecutePipeline(jobs []job, in, out chan interface{}) {
+	defer close(out)
 
 	for _, j := range jobs {
-		out = make(chan interface{}, 100)
-		go j(in, out)
-		close(in)
-		in = out
+		newOut := make(chan interface{}, 100)
+		go j(in, newOut)
+		in = newOut
 	}
 
-	time.Sleep(time.Second) // костыль избегания race condition, который тоже пока не знаю, как убрать
-
-	for range out {
+	for data := range in {
+		out <- data
 	}
 }
 
 type job func(in, out chan interface{})
 
 func main() {
-	// Входные данные для конвейера
 	inputData := []int{0, 1, 1, 2, 3, 5, 8}
-
-	// Создание каналов для промежуточных и конечных результатов
 	midOut := make(chan interface{}, 100)
 	finishOut := make(chan interface{}, 100)
 
@@ -124,9 +102,9 @@ func main() {
 	}()
 
 	ExecutePipeline(
-		job(SingleHash),
-		job(MultiHash),
-		job(CombineResults),
+		[]job{SingleHash, MultiHash, CombineResults},
+		midOut,
+		finishOut,
 	)
 
 	for result := range finishOut {
